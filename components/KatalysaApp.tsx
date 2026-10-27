@@ -36,7 +36,8 @@ export default function KatalysaApp() {
   const search = useSearchParams();
   const segments = pathname.split("/").filter(Boolean);
   const roleSegment = segments[0];
-  const screen = segments.slice(1).join("/") || "home";
+  const routeScreen = segments.slice(1).join("/") || "home";
+  const screen = routeScreen === "dashboard" ? "home" : routeScreen;
 
   const [role, setRole] = useState<Role | null>(null);
   const [userName, setUserName] = useState("Amara Okafor");
@@ -138,7 +139,7 @@ export default function KatalysaApp() {
 
   const notify = (title: string, detail = "Simulated in demo mode. No real account was changed.") => setToastState({ title, detail });
   const go = (path: string) => { setMobileNav(false); setSearchText(""); router.push(path); };
-  const roleHome = (nextRole: Role) => nextRole === "admin" ? "/admin" : `/${nextRole}`;
+  const roleHome = (nextRole: Role) => `/${nextRole}/dashboard`;
   const signIn = async (nextRole: Role, name?: string, selectedSchool?: string) => {
     const session = await mockApi.login(nextRole, name);
     if (selectedSchool) setSchoolName(selectedSchool);
@@ -199,16 +200,18 @@ export default function KatalysaApp() {
     }
   };
 
+  const portalSubdomain = schoolSubdomain || "bloomfield";
+  const schoolLoginRole = roleSegment === "admin" ? "admin" : roleSegment === "teacher" ? "teacher" : roleSegment === "parent" ? "parent" : null;
   if (!sessionReady) return <main className="loading"><span className="spinner" /> Loading Katalysa demo…</main>;
-  if (schoolSubdomain && (!roleSegment || roleSegment === "register")) return <LoginScreen onLogin={signIn} schoolSubdomain={schoolSubdomain}/>;
+  if (schoolLoginRole && segments[1] === "login") return <LoginScreen onLogin={signIn} schoolSubdomain={portalSubdomain} mode={schoolLoginRole === "parent" ? "parent" : "staff"} initialStaffRole={schoolLoginRole === "teacher" ? "teacher" : "admin"} />;
   if (role && roleSegment === "change-password") return <ChangePasswordScreen onComplete={async()=>{await mockApi.changePassword();notify("Password changed in demo");router.push(roleHome(role));}} onSkip={async()=>{await mockApi.continueWithoutPasswordChange();notify("Password change postponed", "You can continue exploring the parent dashboard.");router.push(roleHome(role));}}/>;
-  if (roleSegment === "login") return <LoginScreen onLogin={signIn} onRegister={()=>router.push("/register")} schoolSubdomain={schoolSubdomain} mode={segments[1] === "staff" || segments[1] === "parent" ? segments[1] : null} />;
+  if (roleSegment === "login") return <LoginScreen onLogin={signIn} mode={segments[1] === "staff" || segments[1] === "parent" ? segments[1] : null} />;
   if (roleSegment === "register") return <RegisterScreen schoolName={schoolName} setSchoolName={setSchoolName} onRegister={async(name,adminName)=>{await mockApi.registerSchool(name,adminName);setRole("admin");setUserName(adminName);setSchoolName(name);router.push("/admin/school-setup");notify("School registered in demo", "No account or school tenant was created in the backend.");}} />;
-  if (!roleSegment) return <LoginScreen onLogin={signIn} onRegister={()=>router.push("/register")} schoolSubdomain={schoolSubdomain}/>;
+  if (!roleSegment) return <SchoolPortalLanding schoolName={schoolName} onChooseRole={nextRole=>router.push(`/${nextRole}/login`)} onCentralSignIn={()=>router.push("/login")}/>;
   if (!role || (roleSegment === "register" && !role)) {
     if (roleSegment === "change-password") return <ChangePasswordScreen onComplete={async()=>{await mockApi.changePassword();notify("Password changed in demo");router.push("/");}} onSkip={async()=>{await mockApi.continueWithoutPasswordChange();router.push("/");}} />;
     if (roleSegment === "demo-checkout") return <DemoCheckout reference={search.get("reference")||""} onComplete={async reference=>{await mockApi.completeDemoPayment(reference);router.push(`/payment/callback?reference=${encodeURIComponent(reference)}`);}} onCancel={()=>router.back()} />;
-    return <LoginScreen onLogin={signIn} onRegister={()=>router.push("/register")} />;
+    return <SchoolPortalLanding schoolName={schoolName} onChooseRole={nextRole=>router.push(`/${nextRole}/login`)} onCentralSignIn={()=>router.push("/login")}/>;
   }
 
   if (roleSegment === "demo-checkout") return <DemoCheckout reference={search.get("reference")||""} onComplete={async reference=>{await mockApi.completeDemoPayment(reference);router.push(`/payment/callback?reference=${encodeURIComponent(reference)}`);}} onCancel={()=>router.back()} />;
@@ -355,9 +358,11 @@ function KatalysaLogo({inverse=false,className=""}:{inverse?:boolean;className?:
 
 function Modal({title,onClose,onSubmit,submit,children,showSubmit=true}:{title:string;onClose:()=>void;onSubmit:(event:FormEvent<HTMLFormElement>)=>void;submit:string;children:ReactNode;showSubmit?:boolean}){return <section className="modal-card" role="dialog" aria-modal="true" aria-label={title}><header className="modal-header"><div><KatalysaLogo inverse className="modal-mark"/><div><h2>{title}</h2><small>Bloomfield Academy · Demo</small></div></div><button className="icon-action" onClick={onClose} aria-label="Close dialog"><X size={18}/></button></header><form onSubmit={onSubmit}><div className="modal-body">{children}</div>{showSubmit&&<footer className="modal-footer"><Button variant="outline" onClick={onClose}>Cancel</Button><Button>{submit}<ArrowRight size={15}/></Button></footer>}</form></section>;}
 
-function LoginScreen({onLogin,onRegister,schoolSubdomain="",mode=null}:{onLogin:(role:Role,name?:string,school?:string)=>void;onRegister?:()=>void;schoolSubdomain?:string;mode?:"staff"|"parent"|null}) {
+function SchoolPortalLanding({schoolName,onChooseRole,onCentralSignIn}:{schoolName:string;onChooseRole:(role:"admin"|"teacher"|"parent")=>void;onCentralSignIn:()=>void}){const portalOptions=[{role:"admin" as const,label:"School administrator",description:"Manage school records, fees, reports and settings.",icon:<Building2 size={22}/>,tone:"portal-admin"},{role:"teacher" as const,label:"Teacher",description:"Access your classes, score entry and school notices.",icon:<GraduationCap size={22}/>,tone:"portal-teacher"},{role:"parent" as const,label:"Parent",description:"Keep up with your child’s fees, results and school updates.",icon:<Users size={22}/>,tone:"portal-parent"}];return <main className="school-portal-page"><header className="school-portal-header"><div className="school-portal-identity"><span className="portal-school-mark">B</span><div><strong>{schoolName}</strong><small>School portal</small></div></div><div className="portal-powered"><KatalysaLogo/><span>Powered by Katalysa</span></div></header><section className="school-portal-hero"><div className="portal-copy"><span className="portal-eyebrow"><i/>WELCOME TO YOUR SCHOOL PORTAL</span><h1>Everything your school community needs, in one place.</h1><p>Welcome to {schoolName}. Use the portal that is right for you to stay connected with school life.</p><div className="portal-contact"><span><Building2 size={15}/>14 Independence Avenue, Ikeja, Lagos</span><span><MessageSquare size={15}/>hello@bloomfield.edu.ng</span></div></div><aside className="portal-message"><span className="portal-message-icon"><Sparkles size={20}/></span><p>“Inspiring confident learners and supporting every family along the way.”</p><small>Bloomfield Academy</small></aside></section><section className="portal-access"><div className="portal-access-heading"><div><span className="portal-eyebrow">ACCESS YOUR PORTAL</span><h2>How would you like to continue?</h2></div><p>Select your role to sign in securely to {schoolName}.</p></div><div className="portal-role-grid">{portalOptions.map(option=><button key={option.role} className={`portal-role-card ${option.tone}`} onClick={()=>onChooseRole(option.role)}><span className="portal-role-icon">{option.icon}</span><span><strong>{option.label}</strong><small>{option.description}</small></span><ArrowRight size={19}/></button>)}</div></section><footer className="school-portal-footer"><span>Need help accessing your account? Contact {schoolName}.</span><button onClick={onCentralSignIn}>Use Katalysa central sign-in <ArrowRight size={14}/></button></footer></main>;}
+
+function LoginScreen({onLogin,onRegister,schoolSubdomain="",mode=null,initialStaffRole="admin"}:{onLogin:(role:Role,name?:string,school?:string)=>void;onRegister?:()=>void;schoolSubdomain?:string;mode?:"staff"|"parent"|null;initialStaffRole?:"admin"|"teacher"}) {
   const [selectedMode,setSelectedMode]=useState<"staff"|"parent"|null>(mode);
-  const [staffRole,setStaffRole]=useState<"admin"|"teacher">("admin");
+  const [staffRole,setStaffRole]=useState<"admin"|"teacher">(initialStaffRole);
   const [identifier,setIdentifier]=useState("");
   const [password,setPassword]=useState("");
   const [error,setError]=useState("");
